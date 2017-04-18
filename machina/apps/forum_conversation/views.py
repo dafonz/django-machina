@@ -35,6 +35,9 @@ attachments_cache = get_class('forum_attachments.cache', 'cache')
 
 PermissionRequiredMixin = get_class('forum_permission.viewmixins', 'PermissionRequiredMixin')
 
+TrackingHandler = get_class('forum_tracking.handler', 'TrackingHandler')
+track_handler = TrackingHandler()
+
 
 class TopicView(PermissionRequiredMixin, ListView):
     """
@@ -51,12 +54,21 @@ class TopicView(PermissionRequiredMixin, ListView):
     def get(self, request, **kwargs):
         topic = self.get_topic()
 
+        unread = request.GET.get('unread', None)
+        if unread:
+            oldest_unread_post = track_handler.get_oldest_unread_post(topic, self.request.user)
+            print(oldest_unread_post)
+            request.GET = request.GET.copy()  # A QueryDict is immutable
+            request.GET.update({'post': str(oldest_unread_post)})
+
         # Handle pagination
         requested_post = request.GET.get('post', None)
+
         if requested_post:
             try:
                 assert requested_post.isdigit()
                 post = topic.posts.get(pk=requested_post)
+                print(post.position)
                 requested_page = ((post.position - 1) //
                                   machina_settings.TOPIC_POSTS_NUMBER_PER_PAGE) + 1
                 request.GET = request.GET.copy()  # A QueryDict is immutable
