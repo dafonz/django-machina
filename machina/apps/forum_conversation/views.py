@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.translation import ugettext_lazy as _
 from django.views.generic import DeleteView
 from django.views.generic import FormView
@@ -35,6 +35,9 @@ attachments_cache = get_class('forum_attachments.cache', 'cache')
 
 PermissionRequiredMixin = get_class('forum_permission.viewmixins', 'PermissionRequiredMixin')
 
+TrackingHandler = get_class('forum_tracking.handler', 'TrackingHandler')
+track_handler = TrackingHandler()
+
 
 class TopicView(PermissionRequiredMixin, ListView):
     """
@@ -51,8 +54,16 @@ class TopicView(PermissionRequiredMixin, ListView):
     def get(self, request, **kwargs):
         topic = self.get_topic()
 
+        unread = request.GET.get('unread', None)
+        if unread:
+            oldest_unread_post = track_handler.get_oldest_unread_post(topic, self.request.user)
+            if oldest_unread_post:
+                return redirect(
+                    request.path_info + '?post=' + str(oldest_unread_post) + '#post-' + str(oldest_unread_post))
+
         # Handle pagination
         requested_post = request.GET.get('post', None)
+
         if requested_post:
             try:
                 assert requested_post.isdigit()
@@ -156,11 +167,11 @@ class BasePostFormView(FormView):
         attachment_formset = self.get_attachment_formset(attachment_formset_class)
 
         self.attachment_preview = self.preview if attachment_formset \
-            and attachment_formset.is_valid() else None
+                                                  and attachment_formset.is_valid() else None
 
         post_form_valid = post_form.is_valid()
         if (post_form_valid and attachment_formset is None) or \
-                (post_form_valid and attachment_formset.is_valid()):
+            (post_form_valid and attachment_formset.is_valid()):
             return self.form_valid(post_form, attachment_formset)
         else:
             return self.form_invalid(post_form, attachment_formset)
@@ -238,7 +249,7 @@ class BasePostFormView(FormView):
         Returns an instance of the attachment formset to be used in the view.
         """
         if self.request.forum_permission_handler.can_attach_files(
-                self.get_forum(), self.request.user):
+            self.get_forum(), self.request.user):
             return formset_class(**self.get_attachment_formset_kwargs())
 
     def get_attachment_formset_kwargs(self):
@@ -282,7 +293,7 @@ class BasePostFormView(FormView):
                 for form in context['attachment_formset'].forms:
                     if form['DELETE'].value() \
                         or (not form['file'].html_name in self.request._files and
-                            not form.instance.pk):
+                                not form.instance.pk):
                         continue
                     attachments.append(
                         (
@@ -335,7 +346,7 @@ class BasePostFormView(FormView):
         page.
         """
         save_attachment_formset = attachment_formset is not None \
-            and not self.preview
+                                  and not self.preview
 
         if self.preview:
             return self.render_to_response(
@@ -363,7 +374,7 @@ class BasePostFormView(FormView):
         the data-filled forms and errors.
         """
         if attachment_formset and not attachment_formset.is_valid() \
-                and len(attachment_formset.errors):
+            and len(attachment_formset.errors):
             messages.error(
                 self.request, self.attachment_formset_general_error_message)
 
@@ -421,14 +432,15 @@ class BaseTopicFormView(BasePostFormView):
         attachment_formset_valid = attachment_formset.is_valid() if attachment_formset \
             else None
         poll_option_formset_valid = poll_option_formset.is_valid() if poll_option_formset \
-            and len(post_form.cleaned_data['poll_question']) else None
+                                                                      and len(
+            post_form.cleaned_data['poll_question']) else None
 
         self.attachment_preview = self.preview if attachment_formset_valid else None
         self.poll_preview = self.preview if poll_option_formset_valid else None
 
         poll_options_validated = poll_option_formset_valid is not None
         if post_form_valid and attachment_formset_valid is not False \
-                and poll_option_formset_valid is not False:
+            and poll_option_formset_valid is not False:
             return self.form_valid(
                 post_form, attachment_formset, poll_option_formset,
                 poll_options_validated=poll_options_validated)
@@ -449,7 +461,7 @@ class BaseTopicFormView(BasePostFormView):
         Returns an instance of the poll option formset to be used in the view.
         """
         if self.request.forum_permission_handler.can_create_polls(
-                self.get_forum(), self.request.user):
+            self.get_forum(), self.request.user):
             return formset_class(**self.get_poll_option_formset_kwargs())
 
     def get_poll_option_formset_kwargs(self):
@@ -488,7 +500,7 @@ class BaseTopicFormView(BasePostFormView):
 
     def form_valid(self, post_form, attachment_formset, poll_option_formset, **kwargs):
         save_poll_option_formset = poll_option_formset is not None \
-            and not self.preview
+                                   and not self.preview
 
         valid = super(BaseTopicFormView, self).form_valid(
             post_form, attachment_formset, poll_option_formset=poll_option_formset, **kwargs)
@@ -507,7 +519,7 @@ class BaseTopicFormView(BasePostFormView):
     def form_invalid(self, post_form, attachment_formset, poll_option_formset, **kwargs):
         poll_errors = [k for k in post_form.errors.keys() if k.startswith('poll_')]
         if poll_errors or (poll_option_formset and not poll_option_formset.is_valid() and
-                           len(post_form.cleaned_data['poll_question'])):
+                               len(post_form.cleaned_data['poll_question'])):
             messages.error(self.request, self.poll_option_formset_general_error_message)
 
         return super(BaseTopicFormView, self).form_invalid(

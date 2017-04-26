@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import unicode_literals
+
 import mimetypes
 import os
 
+from PIL import Image
 from django.http import HttpResponse
 from django.views.generic import DetailView
 
@@ -29,8 +31,20 @@ class AttachmentView(PermissionRequiredMixin, DetailView):
         if not content_type:
             content_type = 'text/plain'
 
+        # Check if the attachment is an image
+        is_image = False
+        if content_type == 'image/jpeg' or content_type == 'image/gif' or content_type == 'image/png':
+            try:
+                trial_image = Image.open(self.object.file.file.name)
+                trial_image.verify()
+                is_image = True
+            except:
+                is_image = False
+
         response = HttpResponse(self.object.file, content_type=content_type)
-        response['Content-Disposition'] = 'attachment; filename={}'.format(filename)
+        if not is_image:
+            # Attachment is not a verified image, let browser download it
+            response['Content-Disposition'] = 'attachment; filename={}'.format(filename)
 
         return response
 
