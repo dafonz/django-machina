@@ -10,6 +10,8 @@ from machina.apps.forum.signals import forum_viewed
 from machina.conf import settings as machina_settings
 from machina.core.db.models import get_model
 from machina.core.loading import get_class
+from django.utils.timezone import localtime, now
+from datetime import timedelta
 
 Forum = get_model('forum', 'Forum')
 Topic = get_model('forum_conversation', 'Topic')
@@ -104,3 +106,39 @@ class ForumView(PermissionRequiredMixin, ListView):
         self.view_signal.send(
             sender=self, forum=forum, user=request.user,
             request=request, response=response)
+
+
+class NewTopicsView(ListView):
+    """
+    Provides a list of topics updated in the last x days
+    """
+    model = Topic
+    context_object_name = 'topics'
+    paginate_by = machina_settings.FORUM_TOPICS_NUMBER_PER_PAGE
+    template_name = 'forum/new_topics_list.html'
+
+    def get_queryset(self):
+        # Determines the forums that can be accessed by the current user
+        forums = self.request.forum_permission_handler.get_readable_forums(
+            Forum.objects.all(), self.request.user)
+
+        if self.kwargs['days']:
+            days = int(self.kwargs['days'])
+        else:
+            days = 5
+        date_gte = localtime(now()) - timedelta(days=days)
+
+        # Returns the topics the current user posted in
+        return Topic.objects.select_related('poster', 'last_post', 'last_post__poster') \
+            .filter(forum__in=forums, last_post_on__gte=date_gte) \
+            .order_by('-last_post_on')
+
+    def get_context_data(self, **kwargs):
+        context = super(NewTopicsView, self).get_context_data(**kwargs)
+
+        # Determines the topics that have not been read by the current user
+        context['unread_topics'] = TrackingHandler(self.request).get_unread_topics(
+            list(context[self.context_object_name]), self.request.user)
+
+        return context
+
