@@ -56,6 +56,8 @@ class TrackingHandler(object):
         if not user.is_authenticated() or topics is None or not len(topics):
             return []
 
+        print(topics)
+
         topic_ids = [topic.id for topic in topics]
 
         # build query constraints

@@ -14,12 +14,14 @@ class ForumApp(Application):
 
     index_view = get_class('forum.views', 'IndexView')
     forum_view = get_class('forum.views', 'ForumView')
+    new_topics_view = get_class('forum.views', 'NewTopicsView')
 
     def get_urls(self):
         return [
             url(r'^$', self.index_view.as_view(), name='index'),
             url(_(r'^forum/(?P<slug>[\w-]+)-(?P<pk>\d+)/$'),
                 self.forum_view.as_view(), name='forum'),
+            url(r'^new/(?P<days>[1-7]{0,1})$', self.new_topics_view.as_view(), name='new_topics')
         ]
 
 
