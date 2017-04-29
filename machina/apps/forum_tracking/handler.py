@@ -76,12 +76,12 @@ class TrackingHandler(object):
 
         untracked = (~Q(tracks__user=self.request.user) & ~Q(forum__tracks__user=user))
 
-        untracked_ids = Topic.approved_objects.filter(in_topics & untracked).values_list('id', flat=True)
+        untracked_ids = Topic.objects.filter(in_topics & untracked).values_list('id', flat=True)
 
         not_tracked = Q(id__in=untracked_ids)
 
         # run query
-        unread_topics = Topic.approved_objects.filter(in_topics & ((updated_after_last_read_topic
+        unread_topics = Topic.objects.filter(in_topics & ((updated_after_last_read_topic
                                                            | (updated_after_last_read_forum
                                                               & ~updated_before_last_read_topic))
                                                           | not_tracked))
