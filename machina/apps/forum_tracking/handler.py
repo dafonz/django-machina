@@ -58,14 +58,19 @@ class TrackingHandler(object):
 
         topic_ids = [topic.id for topic in topics]
 
-        # build query constraints
-
         in_topics = Q(id__in=topic_ids)
 
+        # option 1: topic created or updated after user's track for this topic
         updated_after_last_read_topic = (Q(tracks__user=user)
                                          & (Q(tracks__mark_time__lt=F('last_post_on'))
                                             | (Q(tracks__mark_time__lt=F('created')))))
 
+        updated_after_last_read_topic_ids = Topic.objects.filter(in_topics
+                                                                 & (updated_after_last_read_topic))\
+            .values_list('id', flat=True)
+
+        # option 2: topic created or updated after user's track for forum topic is in
+        #           and not before user's track for this topic
         updated_after_last_read_forum = (Q(forum__tracks__user=user)
                                          & (Q(forum__tracks__mark_time__lt=F('last_post_on'))
                                             | (Q(forum__tracks__mark_time__lt=F('created')))))
@@ -74,17 +79,22 @@ class TrackingHandler(object):
                                           & (Q(tracks__mark_time__gte=F('last_post_on'))
                                              | (Q(tracks__mark_time__gte=F('created')))))
 
+        updated_after_last_read_forum_ids = Topic.objects.filter(in_topics
+                                                                 & (updated_after_last_read_forum
+                                                                    & ~updated_before_last_read_topic))\
+            .values_list('id', flat=True)
+
+        # option 3: topic and topic's forum not tracked by user
         untracked = (~Q(tracks__user=self.request.user) & ~Q(forum__tracks__user=user))
 
         untracked_ids = Topic.objects.filter(in_topics & untracked).values_list('id', flat=True)
 
-        not_tracked = Q(id__in=untracked_ids)
+        # option 1 or 2 or 3
+        unread = (Q(id__in=updated_after_last_read_topic_ids)
+                  | Q(id__in=updated_after_last_read_forum_ids)
+                  | Q(id__in=untracked_ids))
 
-        # run query
-        unread_topics = Topic.objects.filter(in_topics & ((updated_after_last_read_topic
-                                                           | (updated_after_last_read_forum
-                                                              & ~updated_before_last_read_topic))
-                                                          | not_tracked))
+        unread_topics = Topic.objects.filter(in_topics & unread)
 
         return unread_topics
 
@@ -97,10 +107,18 @@ class TrackingHandler(object):
                                                   & Q(topic__tracks__mark_time__gte=F('created'))
                                                   ).values_list("id", flat=True)
 
+        new_posts_since_topic_last_read = Post.approved_objects.filter(Q(topic=topic)
+                                                                       & (Q(topic__tracks__mark_time__lt=F('created')))
+                                                                       ).values_list("id", flat=True)
+
+        new_posts_since_forum_last_read = Post.approved_objects.filter(Q(topic=topic)
+                                                                       & (Q(topic__forum__tracks__mark_time__lt=F('created'))
+                                                                          & ~Q(id__in=read_posts))
+                                                                       ).values_list("id", flat=True)
+
         unread_posts = Post.approved_objects.filter(Q(topic=topic)
-                                                    & (Q(topic__tracks__mark_time__lt=F('created'))
-                                                       | (Q(topic__forum__tracks__mark_time__lt=F('created'))
-                                                          & ~Q(id__in=read_posts)))
+                                                    & (Q(id__in=new_posts_since_topic_last_read)
+                                                       | Q(id__in=new_posts_since_forum_last_read))
                                                     ).order_by('created')[:1]
 
         if unread_posts:

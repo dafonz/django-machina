@@ -132,14 +132,19 @@ class UnreadTopicsView(ListView):
         forums = self.request.forum_permission_handler.get_readable_forums(
             Forum.objects.all(), self.request.user)
 
-        # build query constraints
-
         in_forums = Q(forum__in=forums)
 
+        # option 1: topic created or updated after user's track for this topic
         updated_after_last_read_topic = (Q(tracks__user=self.request.user)
                                          & (Q(tracks__mark_time__lt=F('last_post_on'))
                                             | (Q(tracks__mark_time__lt=F('created')))))
 
+        updated_after_last_read_topic_ids = Topic.objects.filter(in_forums
+                                                                 & (updated_after_last_read_topic)) \
+            .values_list('id', flat=True)
+
+        # option 2: topic created or updated after user's track for forum topic is in
+        #           and not before user's track for this topic
         updated_after_last_read_forum = (Q(forum__tracks__user=self.request.user)
                                          & (Q(forum__tracks__mark_time__lt=F('last_post_on'))
                                             | (Q(forum__tracks__mark_time__lt=F('created')))))
@@ -148,23 +153,28 @@ class UnreadTopicsView(ListView):
                                           & (Q(tracks__mark_time__gte=F('last_post_on'))
                                              | (Q(tracks__mark_time__gte=F('created')))))
 
-        untracked = ~(Q(tracks__user=self.request.user) | Q(forum__tracks__user=self.request.user))
+        updated_after_last_read_forum_ids = Topic.objects.filter(in_forums
+                                                                 & (updated_after_last_read_forum
+                                                                    & ~updated_before_last_read_topic)) \
+            .values_list('id', flat=True)
 
-        untracked_ids = Topic.approved_objects.filter(in_forums & untracked).values_list('id', flat=True)
+        # option 3: topic and topic's forum not tracked by user
+        untracked = (~Q(tracks__user=self.request.user) & ~Q(forum__tracks__user=self.request.user))
 
-        not_tracked = Q(id__in=untracked_ids)
+        untracked_ids = Topic.objects.filter(in_forums & untracked).values_list('id', flat=True)
 
-        # run query
-        topics = Topic.approved_objects.filter(in_forums & (updated_after_last_read_topic
-                                                            | (updated_after_last_read_forum
-                                                               & ~updated_before_last_read_topic)
-                                                            | not_tracked)) \
-            .order_by('-last_post_on').distinct().select_related('poster',
-                                                                   'forum',
-                                                                   'last_post',
-                                                                   'last_post__poster')[:1000]
+        # option 1 or 2 or 3
+        unread = (Q(id__in=updated_after_last_read_topic_ids)
+                  | Q(id__in=updated_after_last_read_forum_ids)
+                  | Q(id__in=untracked_ids))
 
-        return topics
+        unread_topics = Topic.approved_objects.filter(in_forums & unread).order_by(
+            '-last_post_on').distinct().select_related('poster',
+                                                       'forum',
+                                                       'last_post',
+                                                       'last_post__poster')[:1000]
+
+        return unread_topics
 
     @method_decorator(login_required)
     def dispatch(self, request, *args, **kwargs):
