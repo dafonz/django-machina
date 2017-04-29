@@ -56,8 +56,6 @@ class TrackingHandler(object):
         if not user.is_authenticated() or topics is None or not len(topics):
             return []
 
-        print(len(topics))
-
         topic_ids = [topic.id for topic in topics]
 
         # build query constraints
@@ -87,8 +85,6 @@ class TrackingHandler(object):
                                                            | (updated_after_last_read_forum
                                                               & ~updated_before_last_read_topic))
                                                           | not_tracked))
-
-        print(unread_topics.count())
 
         return unread_topics
 
