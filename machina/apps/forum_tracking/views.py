@@ -162,7 +162,7 @@ class UnreadTopicsView(ListView):
             .order_by('-last_post_on').distinct().select_related('poster',
                                                                    'forum',
                                                                    'last_post',
-                                                                   'last_post__poster')
+                                                                   'last_post__poster')[:1000]
 
         return topics
 
