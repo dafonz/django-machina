@@ -27,9 +27,8 @@ Post = get_model('forum_conversation', 'Post')
 Topic = get_model('forum_conversation', 'Topic')
 
 ForumProfileForm = get_class('forum_member.forms', 'ForumProfileForm')
-
 PermissionRequiredMixin = get_class('forum_permission.viewmixins', 'PermissionRequiredMixin')
-
+TrackingHandler = get_class('forum_tracking.handler', 'TrackingHandler')
 
 class UserPostsView(ListView):
     """
@@ -213,3 +212,36 @@ class TopicSubscribtionListView(ListView):
     @method_decorator(login_required)
     def dispatch(self, request, *args, **kwargs):
         return super(TopicSubscribtionListView, self).dispatch(request, *args, **kwargs)
+
+
+class UserTopicsView(ListView):
+    """
+    Provides a list of all the topics the current user posted in
+    """
+    model = Topic
+    context_object_name = 'topics'
+    paginate_by = machina_settings.FORUM_TOPICS_NUMBER_PER_PAGE
+    template_name = 'forum_member/user_topics_list.html'
+
+    def get_queryset(self):
+        # Determines the forums that can be accessed by the current user
+        forums = self.request.forum_permission_handler.get_readable_forums(
+            Forum.objects.all(), self.request.user)
+
+        # Returns the topics the current user posted in
+        return Topic.objects.select_related('poster', 'last_post', 'last_post__poster') \
+            .filter(forum__in=forums, posts__poster=self.request.user).distinct() \
+            .order_by('-last_post_on')
+
+    def get_context_data(self, **kwargs):
+        context = super(UserTopicsView, self).get_context_data(**kwargs)
+
+        # Determines the topics that have not been read by the current user
+        context['unread_topics'] = TrackingHandler(self.request).get_unread_topics(
+            list(context[self.context_object_name]), self.request.user)
+
+        return context
+
+    @method_decorator(login_required)
+    def dispatch(self, request, *args, **kwargs):
+        return super(UserTopicsView, self).dispatch(request, *args, **kwargs)

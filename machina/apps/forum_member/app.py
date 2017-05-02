@@ -13,6 +13,7 @@ class MemberApp(Application):
     name = 'forum_member'
 
     user_posts_list = get_class('forum_member.views', 'UserPostsView')
+    user_topics_list = get_class('forum_member.views', 'UserTopicsView')
     forum_profile_detail_view = get_class('forum_member.views', 'ForumProfileDetailView')
     forum_profile_update_view = get_class('forum_member.views', 'ForumProfileUpdateView')
     topic_subscribe_view = get_class('forum_member.views', 'TopicSubscribeView')
@@ -36,6 +37,9 @@ class MemberApp(Application):
                 self.topic_subscribe_view.as_view(), name='topic_subscribe'),
             url(_(r'^topic/(?P<pk>\d+)/unsubscribe/$'),
                 self.topic_unsubscribe_view.as_view(), name='topic_unsubscribe'),
+
+            url(_(r'^topics/$'), self.user_topics_list.as_view(),
+                name='user_topics'),
         ]
 
 
